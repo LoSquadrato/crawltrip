@@ -20,6 +20,13 @@ profile.cov
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
+# Not implemented yet (comment to include it)
+cmd/api/
+api/
+data/
+auth/
+robot.go
+
 # Go workspace file
 go.work
 go.work.sum
@@ -32,7 +39,6 @@ go.work.sum
 # .vscode/
 
 # debugging
-*.html
 
 
 # binaries w/out extensions

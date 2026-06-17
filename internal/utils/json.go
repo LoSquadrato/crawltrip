@@ -6,8 +6,7 @@ import (
 	"net/http"
 )
 
-// TODO: probably should be moved to messaging package
-
+// RespondWithError sends a JSON response with an error message and the specified HTTP status code.
 func RespondWithError(w http.ResponseWriter, code int, msg string) {
 	resp := map[string]string{"error": msg}
 	dat, err := json.Marshal(resp)
@@ -21,6 +20,7 @@ func RespondWithError(w http.ResponseWriter, code int, msg string) {
 	w.Write([]byte(dat))
 }
 
+// RespondWithJSON sends a JSON response with the specified payload and HTTP status code.
 func RespondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	dat, err := json.Marshal(payload)
 	if err != nil {

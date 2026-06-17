@@ -4,10 +4,9 @@ package config
 
 // Broker key names
 const (
-	CrawlSubjectPrefix = "worker"
-	WorkerQueueGroup   = "request_queue"
-	CrawlStreamName    = "crawl_stream"
-	CrawlConsumerName  = "crawl_consumer"
+	CrawlSubjectPrefix = "request_worker"
+	CrawlStreamName    = "request_stream"
+	CrawlConsumerName  = "request_consumer"
 )
 
 // Database configuration constants
@@ -25,15 +24,5 @@ const (
 )
 
 const (
-	// NatsUrl is the URL of the NATS server.
-	// if no url is provided, the default URL
-	NatsUrl = ""
+	NatsUrl = "http://localhost:4222"
 )
-
-const (
-	ApiUrl = "http://localhost:8082"
-)
-
-// NATS use the default URL so we don't need to define it here,
-// but we can if we want to use a different URL.
-// const NatsUrl = "nats://localhost:4222"

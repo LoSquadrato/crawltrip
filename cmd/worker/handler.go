@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"log"
+	"time"
 
 	"github.com/nats-io/nats.go/jetstream"
 
@@ -16,30 +17,33 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
+// enum for the different selectors for the messages, to route them to the correct handler
 const (
 	selectorRequest = "request"
 	selectorPing    = "ping"
 )
 
-func (wc *WorkerConfig) HandlerMsg(m jetstream.Msg) messaging.AckAction {
+// general handler for the worker, it will route the message to the correct handler based on the subject of the message
+func (wc *WorkerConfig) HandlerMsgJSON(m jetstream.Msg) messaging.AckAction {
 	switch m.Subject() {
 	case config.CrawlSubjectPrefix + "." + selectorRequest:
-		return handlerSaveRequest(wc.dbClient, m.Data())
+		return handlerSaveRequestJSON(wc.dbClient, m.Data())
 	case config.CrawlSubjectPrefix + "." + selectorPing:
-		return handlerPingDatabase(wc.dbClient, m.Data())
+		return handlerPingDatabaseJSON(wc.dbClient, m.Data())
 	default:
 		log.Printf("Received message on unknown subject: %s\n", m.Subject())
 		return messaging.NackDiscard
 	}
 }
 
-func handlerSaveRequest(client *mongo.Client, data []byte) messaging.AckAction {
+// handler for saving the request to the database
+func handlerSaveRequestJSON(client *mongo.Client, data []byte) messaging.AckAction {
 	var rw classificator.RawRequest
 	if err := json.Unmarshal(data, &rw); err != nil {
 		log.Printf("Failed to unmarshal request: %v\n", err)
 		return messaging.NackDiscard
 	}
-	if err := database.SaveRequest(context.TODO(), client, &rw); err != nil {
+	if err := database.SaveRequest(context.TODO(), client, rw); err != nil {
 		log.Printf("Failed to save request: %v\n", err)
 		return messaging.NackWithDelay
 	} else {
@@ -48,15 +52,13 @@ func handlerSaveRequest(client *mongo.Client, data []byte) messaging.AckAction {
 	return messaging.Ack
 }
 
-func handlerPingDatabase(client *mongo.Client, data []byte) messaging.AckAction {
-	var payload struct {
-		Message string `json:"message"`
-	}
-	if err := json.Unmarshal(data, &payload); err != nil {
-		log.Printf("Failed to unmarshal ping message: %v\n", err)
-		return messaging.NackDiscard
-	}
-	if err := database.Ping(client, context.TODO()); err != nil {
+// handler for pinging the database to check if it's alive and responsive
+func handlerPingDatabaseJSON(client *mongo.Client, data []byte) messaging.AckAction {
+	payload := string(data)
+	log.Printf("Received ping message with payload: %s\n", payload)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := database.Ping(client, ctx); err != nil {
 		log.Printf("Failed to ping database: %v\n", err)
 		return messaging.NackWithDelay
 	} else {

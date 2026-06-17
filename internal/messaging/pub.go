@@ -14,7 +14,7 @@ type Message struct {
 	Data    interface{}
 }
 
-// function to publish messages to the queue
+// function to publish messages to the queue as JSON
 func PublishMessage(nc *nats.Conn, msg *Message) error {
 	msgData, err := json.Marshal(msg.Data)
 	if err != nil {

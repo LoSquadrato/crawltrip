@@ -10,11 +10,10 @@ import (
 	"net/http"
 	"time"
 
-	//"github.com/google/uuid"
 	agents "github.com/monperrus/crawler-user-agents"
 )
 
-func Classificator(userAgent string) bool {
+func IsCrawler(userAgent string) bool {
 	return agents.IsCrawler(userAgent)
 }
 
@@ -28,6 +27,10 @@ type RawRequest struct {
 	RemoteAddr string              `json:"remote_addr,omitempty"`
 	Host       string              `json:"host,omitempty"`
 }
+
+// This package provides a simple classificator to determine if a user agent is a bot or not.
+// We start using only the crawler-user-agents library, but we can easily extend it to use other sources
+// of information in the future, such as a database or an API.
 
 func ParseRequest(r *http.Request) (*RawRequest, error) {
 	bodyBytes, err := io.ReadAll(r.Body)

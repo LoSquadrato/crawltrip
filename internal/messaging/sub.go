@@ -1,7 +1,5 @@
 package messaging
 
-// add function to consume messages from the queue and process them
-
 import (
 	"context"
 	"fmt"
@@ -12,6 +10,7 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 )
 
+// AckAction represents the acknowledgment action to be taken after processing a message.
 type AckAction int
 
 const (
@@ -20,8 +19,6 @@ const (
 	NackRetry
 	NackWithDelay
 )
-
-// TODO: add aknowledgement and retry mechanism for failed messages
 
 // ConsumeAndProcess subscribes to a NATS subject and processes incoming messages using the provided handler function.
 // working with NATS Core Pub/Sub model, don't work with JetStream
@@ -47,12 +44,11 @@ func QueueSubscribeAndProcess(nc *nats.Conn, subject, queue string, handler nats
 	return sub, nil
 }
 
-// TODO: add acknowledgement and retry mechanism for failed messages with NATS JetStream
-func CreateAndConsumeJSON(
+// Create a durable consumer for the crawl messages which body is a JSON and process them using the provided handler function.
+func SubscribeAndProcess(
 	js jetstream.Stream,
 	ctx context.Context,
-	consumerName, // TODO: pass ConsumerConfig struct instead of individual parameters
-	streamName,
+	consumerName,
 	subject string,
 	handler func(m jetstream.Msg) AckAction,
 ) (jetstream.ConsumeContext, error) {
@@ -61,14 +57,14 @@ func CreateAndConsumeJSON(
 	cons, err := js.CreateOrUpdateConsumer(ctx, jetstream.ConsumerConfig{
 		Name:          consumerName,
 		FilterSubject: subject,
-		AckPolicy:     jetstream.AckExplicitPolicy,                                          // TODO: verify if this is the correct ack policy for our use case
-		MaxDeliver:    5,                                                                    // 10 retries
-		BackOff:       []time.Duration{5 * time.Second, 10 * time.Second, 30 * time.Second}, // example backoff strategy, adjust as needed
+		AckPolicy:     jetstream.AckExplicitPolicy,
+		MaxDeliver:    5,
+		BackOff:       []time.Duration{5 * time.Second, 10 * time.Second, 30 * time.Second},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create or update consumer: %w", err)
 	}
-	fmt.Println("Created consumer", cons.CachedInfo().Name)
+	log.Println("Created consumer", cons.CachedInfo().Name)
 
 	// consume messages using the durable consumer
 	consumeContext, err := cons.Consume(func(m jetstream.Msg) {

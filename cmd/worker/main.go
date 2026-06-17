@@ -1,3 +1,5 @@
+// This is the main entry point for the worker, which will connect to the database and the NATS server,
+// and start listening for messages on the configured subject.
 package main
 
 import (
@@ -11,38 +13,33 @@ import (
 	"github.com/LoSquadrato/crawltrip/internal/config"
 	"github.com/LoSquadrato/crawltrip/internal/database"
 	"github.com/LoSquadrato/crawltrip/internal/messaging"
+
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
+// WorkerConfig holds the configuration for the worker, including the database client and any other dependencies
 type WorkerConfig struct {
 	dbClient *mongo.Client
 	broker   *nats.Conn
 }
 
-// TODO:
-// - add aknowledgement and retry mechanism for failed messages with NATS JetStream
 func main() {
 	// Connect to MongoDB
-	dbClient, err := database.Connect(config.DbUri)
+	dbClient, err := database.Connect(config.DbUri, 30*time.Second)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v\n", err)
 	}
 	defer database.Close(dbClient, context.TODO())
 
 	// Connect to NATS server
-	url := config.NatsUrl
-	if url == "" {
-		url = nats.DefaultURL
-	}
-	// Connect to default NATS server (nats://127.0.0.1:4222)
-	nc, err := nats.Connect(url)
+	nc, err := nats.Connect(config.NatsUrl)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Failed to connect to NATS server: %v\n", err)
 	}
-	// Empty the connection pool and close the connection when done
+	// Drain the connection to ensure all messages are processed before exiting
 	defer nc.Drain()
 
 	// Create worker configuration
@@ -57,40 +54,51 @@ func main() {
 		log.Fatalf("Failed to create JetStream context: %v\n", err)
 	}
 
-	// Create a context with a timeout for stream creation
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	streamName := config.CrawlStreamName
-
-	// Create a stream for the crawl messages
-	stream, err := newJS.Stream(ctx, streamName)
-	if err == nil {
-		log.Fatalf("Failed to create stream: %v\n", err)
-	}
-
-	log.Println("Connected to NATS server!")
-
-	// Queue group subscription
-	// TODO:
-	// - move subject and queue group to config
-	// - add a logic to handle multiple subscriptions and handlers
-	consCtx, err := messaging.CreateAndConsumeJSON(
-		stream,
-		ctx,
-		config.CrawlConsumerName,
-		streamName,
-		config.CrawlSubjectPrefix+".*",
-		workerConfig.HandlerMsg,
+	// Create or update the stream for crawl messages
+	stream, err := messaging.DeclareAndBindStream(
+		newJS,
+		jetstream.StreamConfig{
+			Name:      config.CrawlStreamName,
+			Subjects:  []string{config.CrawlSubjectPrefix + ".*"},
+			Retention: jetstream.WorkQueuePolicy,
+			Storage:   jetstream.MemoryStorage,
+			MaxAge:    24 * time.Hour,
+		},
 	)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Failed to create or update stream: %v\n", err)
 	}
 
-	// get info for logging purposes
-	streamInfo, _ := stream.Info(ctx)
+	// Consume messages using the durable consumer
+	consCtx, err := messaging.SubscribeAndProcess(
+		stream,
+		context.TODO(),
+		config.CrawlConsumerName,
+		config.CrawlSubjectPrefix+".*",
+		workerConfig.HandlerMsgJSON,
+	)
+	if err != nil {
+		log.Fatalf("Failed to create or update Worker stream: %v\n", err)
+	}
+	// Drain the subscription before exiting
+	defer consCtx.Drain()
 
-	log.Printf("%s: %s on stream for listening for message on subject: %s\n", streamInfo.Config.Name, config.CrawlConsumerName, config.CrawlSubjectPrefix+".*")
+	log.Printf("%s: %s on stream for listening for message on subject: %s\n", config.CrawlStreamName, config.CrawlConsumerName, config.CrawlSubjectPrefix+".*")
+
+	// Create or update the stream for DLQ messages
+	_, err = messaging.DeclareAndBindStream(
+		newJS,
+		jetstream.StreamConfig{
+			Name:      config.CrawlStreamName + "_DLQ",
+			Subjects:  []string{"$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES." + config.CrawlStreamName + ".*", "$JS.EVENT.ADVISORY.CONSUMER.MSG_TERMINATED." + config.CrawlStreamName + ".*"},
+			Retention: jetstream.LimitsPolicy,
+			Storage:   jetstream.FileStorage,
+			MaxAge:    72 * time.Hour,
+		},
+	)
+	if err != nil {
+		log.Fatalf("Failed to create or update DLQ stream: %v\n", err)
+	}
 
 	// Wait for a signal to gracefully exit
 	quit := make(chan os.Signal, 1)
@@ -98,13 +106,5 @@ func main() {
 	<-quit
 	log.Println("Exiting...")
 
-	// Drain the subscription before exiting
-	consCtx.Drain()
-
-	// Drain the connection to ensure all messages are processed before exiting
-	nc.Drain()
-
-	// Delete the stream and consumer before exiting
-	log.Println("# Delete stream")
-	newJS.DeleteStream(ctx, streamName)
+	log.Println("Worker stopped.")
 }
