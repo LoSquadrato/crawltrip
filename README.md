@@ -6,6 +6,10 @@ The project demonstrates modern backend and infrastructure concepts including re
 
 The project represents the capstone of the Boot.dev Golang course, showcasing the application of learned concepts in a real-world inspired scenario. I think this may have no utility beyond being a learning exercise, but it was a fun and educational project to build!
 
+## Motivation
+
+Audit and analitycs tools often used to monitor web traffic can be low in fidelity and may not accurately capture the behavior of AI crawlers and assistants. CrawlTrip aims to provide a more accurate and reliable solution for identifying and classifying AI-generated requests, enabling better monitoring and analysis of web traffic.
+
 ## Features
 
 * HTTP reverse proxy based on `net/http/httputil.ReverseProxy`
@@ -15,149 +19,13 @@ The project represents the capstone of the Boot.dev Golang course, showcasing th
 * Dead-letter queue for failed message processing
 * Graceful shutdown and service lifecycle management
 
-
-## Components
-
-### Proxy Service
-
-Responsible for:
-
-* Accepting incoming HTTP requests
-* Classifying clients
-* Publishing AI-related events to NATS
-* Forwarding requests to the upstream target
-* Health check endpoint for monitoring
-
-Proxy don't subscribe to any NATS subject, it only produces events for the Worker Service to consume and process asynchronously. It is designed to be fast and non-blocking, ensuring that the request flow is not hindered by the processing of AI-related events.
-
-Health check endpoint is available at `/proxy/ping`, ensure every part of the system is up and running, including the NATS connection and MongoDB connectivity.
-The ping endpoint need a 'X-Admin-Secret' header with the value of the `ADMIN_SECRET` environment variable to be accessed.
-
-### Worker Service
-
-Responsible for:
-
-* Consuming NATS events
-* Persisting request metadata
-* Performing background processing
-
-With JetStream's durable consumers and message persistence, the Worker Service can be scaled horizontally to handle increased load without losing messages. It can also implement retry logic and a dead-letter queue for failed message processing.
-
-### Bot Filter
-
-Responsible for:
-
-* Filtering and classifying requests based on user-agent strings
-
-Futuribley, this component could be enhanced to use more sophisticated techniques for bot detection, such as behavioral analysis or machine learning models.
-
 ---
+## Quick Start
 
-## Data Model
-
-Example stored document:
-
-```json
-{
-  "_id": "6a3279875427ec0a46f480c0",
-  "timestamp": "2026-06-17T10:40:07.628Z",
-  "method": "GET",
-  "url": "/",
-  "proto": "HTTP/1.1",
-  "headers": {
-    "Accept": [ "*/*" ],
-    "User-Agent": [ "Googlebot/2.1" ]
-  },
-  "body": null,
-  "remoteaddr": "[::1]:34086",
-  "host": "localhost:8080"
-}
-```
-
----
-
-## Event Model
-
-#### NATS subject for AI-related requests:
-
-```text
-worker.requests
-```
-
-#### Payload:
-
-```json
-{
-  "Subject": "worker.request", 
-  "Data": "(*classificator.RawRequest)(0x22dfd3916000)"
-}
-```
-#### NATS subject for health check pings:
-
-```text
-worker.ping
-```
-## Acknowledgment Model
-
-There's four possible acknowledgment actions for message processing:
-```Go
-type AckAction int
-
-const (
-	Ack AckAction = iota
-	NackDiscard
-	NackRetry
-	NackWithDelay
-)
-```
-Them ensure a reliable message **at-least-once** processing and allow for retry logic and dead-letter queue handling.
-
-## Dead-letter queue subject for failed message processing:
-
-A dedicated Stream listening to '*$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.*' and '*$JS.EVENT.ADVISORY.CONSUMER.MSG_TERMINATED.*' events, which can be used to monitor and handle failed or terminated messages.
-
-A Consumer can be configured for delivery the dead-letter queue messages to the database or to a log for further analysis.
-
----
-
-## Objectives
-
-* Explore Go networking and middleware patterns
-* Implement a production-inspired reverse proxy
-* Apply asynchronous communication using NATS
-* Demonstrate clean architecture and service decoupling
-
----
-
-## Technology Stack
-
-| Component        | Technology                      |
-| ---------------- | ------------------------------- |
-| Language         | Go                              |
-| Proxy            | net/http, httputil.ReverseProxy |
-| Router           | net/http                        |
-| Messaging        | NATS                            |
-| Database         | MongoDB                         |
-| Bot Detection    | monperrus/crawler-user-agents   |
-| Containerization | Docker                          |
-
----
-
-## Future Improvements
-
-* Prometheus metrics
-* OpenTelemetry tracing
-* Dashboard API
-* Request body capture
-* Rate limiting
-* Redis caching
-* Kubernetes deployment
-
----
-## Getting Started
 ### Prerequisites
 * Go 1.20+
 * Docker
+
 ### Installation
 1. Clone the repository:
    ```bash
@@ -188,6 +56,13 @@ A Consumer can be configured for delivery the dead-letter queue messages to the 
    ```bash
    curl http://localhost:8080/proxy/ping -H "X-Admin-Secret: your_admin_secret"
    ```
+
+
+## Usage
+
+
+## Contributing
+Contributions are welcome! Please submit a pull request or open an issue to discuss your ideas.
 
 ## References
 
